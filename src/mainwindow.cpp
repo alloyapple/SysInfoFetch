@@ -191,7 +191,8 @@ QWidget* MainWindow::createDashboardPanel() {
 
     QVBoxLayout* cardLayout = new QVBoxLayout(card);
     cardLayout->setContentsMargins(32, 24, 32, 24);
-    cardLayout->setSpacing(12);
+    cardLayout->setSpacing(0);
+    cardLayout->setSizeConstraint(QLayout::SetMinimumSize);
 
     QLabel* logo = new QLabel(card);
     QFileIconProvider iconProvider;
@@ -321,6 +322,7 @@ QWidget* MainWindow::createHardwarePanel() {
 
     QVBoxLayout* infoLayout = new QVBoxLayout();
     infoLayout->setSpacing(10);
+    infoLayout->setSizeConstraint(QLayout::SetMinimumSize);
 
     lblCpuInfo = new QLabel(card);
     lblCpuInfo->setFont(QFont("Consolas", 11));
@@ -564,6 +566,7 @@ void MainWindow::updateData() {
                     lbl->setFont(QFont("Consolas", 10));
                     lbl->setStyleSheet("color: #F9E2AF;");
                     lbl->setText(info);
+                    lbl->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
                     hardwareDiskLayout->addWidget(lbl);
                 }
             }

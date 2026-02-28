@@ -13,8 +13,8 @@ class SystemDataProvider : public QObject
     Q_PROPERTY(QString gpuInfo READ gpuInfo NOTIFY dataChanged)
     Q_PROPERTY(QString displayInfo READ displayInfo NOTIFY dataChanged)
     Q_PROPERTY(QString memoryInfo READ memoryInfo NOTIFY dataChanged)
-    Q_PROPERTY(QString diskHardwareInfo READ diskHardwareInfo NOTIFY dataChanged)
     Q_PROPERTY(QString networkInfo READ networkInfo NOTIFY dataChanged)
+    Q_PROPERTY(QString diskHardwareInfo READ diskHardwareInfo NOTIFY dataChanged)
     Q_PROPERTY(QString osInfo READ osInfo NOTIFY dataChanged)
     Q_PROPERTY(QString kernelInfo READ kernelInfo NOTIFY dataChanged)
     Q_PROPERTY(QString shellInfo READ shellInfo NOTIFY dataChanged)
@@ -69,8 +69,8 @@ private:
     void fetchUptime();
     void fetchUserInfo();
     void fetchDiskInfo();
-    void fetchDiskHardwareInfo();
     void fetchMemoryInfo();
+    void fetchDiskHardwareInfo();
     void fetchNetworkInfo();
     void fetchCpuUsage();
     void fetchMemoryUsage();

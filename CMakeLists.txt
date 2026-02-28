@@ -31,6 +31,10 @@ if(WIN32)
         userenv.lib
         advapi32.lib
         iphlpapi.lib
+        wbemuuid.lib
+        ole32.lib
+        oleaut32.lib
+        uuid.lib
     )
 endif()
 

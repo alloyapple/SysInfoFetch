@@ -2,6 +2,8 @@
 #include <Windows.h>
 #include <shlobj.h>
 #include <iphlpapi.h>
+#include <comdef.h>
+#include <Wbemidl.h>
 #include <QTimer>
 #include <QTime>
 #include <QSettings>
@@ -10,6 +12,9 @@
 #include <QTextStream>
 #include <QDateTime>
 #pragma comment(lib, "iphlpapi.lib")
+#pragma comment(lib, "wbemuuid.lib")
+#pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "oleaut32.lib")
 
 SystemDataProvider::SystemDataProvider(QObject *parent)
     : QObject(parent), m_cpuPercent(0), m_memoryPercent(0), m_memoryTotal(0), m_memoryUsed(0)
@@ -254,27 +259,126 @@ void SystemDataProvider::fetchMemoryInfo()
 
 void SystemDataProvider::fetchDiskHardwareInfo()
 {
-    // 获取所有磁盘的硬件信息
-    QStringList diskInfos;
-    DWORD drives = GetLogicalDrives();
-    for (int i = 0; i < 26; i++) {
-        if (drives & (1 << i)) {
-            QString drive = QString("%1:").arg(QChar('A' + i));
-            // 使用 DeviceIoControl 获取磁盘硬件信息（简化版）
-            // 这里暂时只显示磁盘型号（通过查询卷信息）
-            wchar_t path[] = L"X:\\";
-            path[0] = L'A' + i;
+    m_diskHardwareInfo = "";
+    
+    // 初始化 COM
+    HRESULT hres = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(hres) && hres != RPC_E_CHANGED_MODE) {
+        m_diskHardwareInfo = "WMI init failed";
+        emit dataChanged();
+        return;
+    }
+    
+    // 设置安全级别
+    hres = CoInitializeSecurity(
+        nullptr, -1, nullptr, nullptr,
+        RPC_C_AUTHN_LEVEL_DEFAULT,
+        RPC_C_IMP_LEVEL_IMPERSONATE,
+        nullptr, EOAC_NONE, nullptr
+    );
+    
+    IWbemLocator* pLoc = nullptr;
+    hres = CoCreateInstance(CLSID_WbemLocator, nullptr, CLSCTX_INPROC_SERVER,
+                            IID_IWbemLocator, (LPVOID*)&pLoc);
+    
+    if (SUCCEEDED(hres)) {
+        IWbemServices* pSvc = nullptr;
+        BSTR wmiNamespace = SysAllocString(L"ROOT\\CIMV2");
+        hres = pLoc->ConnectServer(
+            wmiNamespace,
+            nullptr, nullptr, nullptr, 0, nullptr, nullptr, &pSvc
+        );
+        SysFreeString(wmiNamespace);
+        
+        if (SUCCEEDED(hres)) {
+            // 设置安全
+            hres = CoSetProxyBlanket(
+                pSvc,
+                RPC_C_AUTHN_WINNT,
+                RPC_C_AUTHZ_NONE,
+                nullptr,
+                RPC_C_AUTHN_LEVEL_CALL,
+                RPC_C_IMP_LEVEL_IMPERSONATE,
+                nullptr,
+                EOAC_NONE
+            );
             
-            wchar_t volumeName[MAX_PATH];
-            wchar_t fsName[MAX_PATH];
-            DWORD serialNumber;
-            if (GetVolumeInformationW(path, volumeName, MAX_PATH, &serialNumber, nullptr, nullptr, fsName, MAX_PATH)) {
-                QString info = QString("%1 (%2)").arg(drive).arg(QString::fromUtf16((const ushort*)fsName));
-                diskInfos.append(info);
+            if (SUCCEEDED(hres)) {
+                IEnumWbemClassObject* pEnumerator = nullptr;
+                BSTR query = SysAllocString(L"SELECT * FROM Win32_DiskDrive");
+                BSTR wql = SysAllocString(L"WQL");
+                hres = pSvc->ExecQuery(
+                    wql,
+                    query,
+                    WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
+                    nullptr,
+                    &pEnumerator
+                );
+                SysFreeString(query);
+                SysFreeString(wql);
+                
+                if (SUCCEEDED(hres)) {
+                    IWbemClassObject* pclsObj = nullptr;
+                    ULONG uReturn = 0;
+                    QStringList disks;
+                    
+                    while (pEnumerator) {
+                        HRESULT hr = pEnumerator->Next(WBEM_INFINITE, 1, &pclsObj, &uReturn);
+                        if (uReturn == 0) break;
+                        
+                        VARIANT vtProp;
+                        
+                        // 获取型号
+                        hr = pclsObj->Get(L"Model", 0, &vtProp, nullptr, nullptr);
+                        QString model = (vtProp.vt == VT_BSTR) ? QString::fromWCharArray(vtProp.bstrVal) : "Unknown";
+                        VariantClear(&vtProp);
+                        
+                        // 获取大小
+                        hr = pclsObj->Get(L"Size", 0, &vtProp, nullptr, nullptr);
+                        QString size = "Unknown";
+                        if (vtProp.vt == VT_BSTR) {
+                            bool ok;
+                            qint64 bytes = QString::fromWCharArray(vtProp.bstrVal).toLongLong(&ok);
+                            if (ok && bytes > 0) {
+                                double gb = bytes / (1024.0 * 1024.0 * 1024.0);
+                                size = QString("%1 GB").arg(gb, 0, 'f', 1);
+                            }
+                        }
+                        VariantClear(&vtProp);
+                        
+                        // 获取接口类型
+                        hr = pclsObj->Get(L"InterfaceType", 0, &vtProp, nullptr, nullptr);
+                        QString interfaceType = (vtProp.vt == VT_BSTR) ? QString::fromWCharArray(vtProp.bstrVal) : "Unknown";
+                        VariantClear(&vtProp);
+                        
+                        // 获取序列号
+                        hr = pclsObj->Get(L"SerialNumber", 0, &vtProp, nullptr, nullptr);
+                        QString serial = (vtProp.vt == VT_BSTR) ? QString::fromWCharArray(vtProp.bstrVal) : "Unknown";
+                        VariantClear(&vtProp);
+                        
+                        // 格式化输出
+                        QString diskInfo = QString("%1 - %2, %3, S/N: %4")
+                            .arg(model).arg(size).arg(interfaceType).arg(serial.left(20));
+                        disks.append(diskInfo);
+                        
+                        pclsObj->Release();
+                    }
+                    
+                    if (disks.isEmpty()) {
+                        m_diskHardwareInfo = "No disks found";
+                    } else {
+                        m_diskHardwareInfo = disks.join("\n");
+                    }
+                    
+                    pEnumerator->Release();
+                }
+                pSvc->Release();
             }
         }
+        pLoc->Release();
     }
-    m_diskHardwareInfo = diskInfos.isEmpty() ? "No disks" : diskInfos.join(", ");
+    
+    CoUninitialize();
     emit dataChanged();
 }
 
