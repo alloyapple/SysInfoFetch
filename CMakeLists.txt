@@ -14,9 +14,15 @@ file(GLOB_RECURSE HEADERS "src/*.h")
 
 set(CMAKE_AUTOMOC_MOC_OPTIONS -DSOME_DEFINES)
 
+# 添加资源文件
+set(RESOURCES
+    resources.qrc
+)
+
 add_executable(${PROJECT_NAME} WIN32
     ${SOURCES}
     ${HEADERS}
+    ${RESOURCES}
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
