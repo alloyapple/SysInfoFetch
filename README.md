@@ -90,9 +90,40 @@
    ```
 
 5. **运行**
-   ```bash
-   ./NeoFetchPro.exe
-   ```
+    ```bash
+    ./NeoFetchPro.exe
+    ```
+
+## 下载
+
+预编译的可执行文件可从 [GitHub Releases](https://github.com/alloyapple/SysInfoFetch/releases/tag/v1.0.0) 获取：
+
+### 下载选项
+
+1. **完整包 (推荐)** - `NeoFetchPro-v1.0.0.zip` (约 9.6 MB)
+   - 包含所有必需的 DLL 依赖
+   - 下载后解压即可直接运行
+   - 无需额外安装任何库
+
+2. **单独可执行文件** - `NeoFetchPro.exe` (约 480 KB)
+   - 需要手动复制以下 DLL 文件到同一目录:
+     - Qt5Core.dll
+     - Qt5Gui.dll
+     - Qt5Widgets.dll
+     - libgcc_s_seh-1.dll
+     - libstdc++-6.dll
+     - libwinpthread-1.dll
+     - platforms/qwindows.dll
+   - 可从 [GitHub Releases](https://github.com/alloyapple/SysInfoFetch/releases/tag/v1.0.0) 下载完整包获取这些文件
+
+### 快速开始
+
+```bash
+# 下载完整包
+# 1. 从 Releases 页面下载 NeoFetchPro-v1.0.0.zip
+# 2. 解压到任意目录
+# 3. 运行 NeoFetchPro.exe
+```
 
 ### 故障排除
 
