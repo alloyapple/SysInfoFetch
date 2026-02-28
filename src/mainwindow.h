@@ -49,6 +49,10 @@ private:
     QVBoxLayout* diskLayout;
     QLabel* lblCpuInfo;
     QLabel* lblGpuInfo;
+    QLabel* lblDisplayInfo;
+    QLabel* lblMemoryInfo;
+    QLabel* lblNetworkInfo;
+    QVBoxLayout* hardwareDiskLayout;
     QLabel* lblSoftwareOs;
     QLabel* lblKernelInfo;
     QLabel* lblShellInfo;

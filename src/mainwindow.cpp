@@ -4,12 +4,14 @@
 #include <QFile>
 #include <QTextStream>
 #include <QDateTime>
+#include <Windows.h>
 
 MainWindow::MainWindow(SystemDataProvider* data, QWidget *parent) 
     : QWidget(parent), m_data(data), m_dragging(false), m_selectedMenu(0),
       lblUsername(nullptr), lblOs(nullptr), lblCpuPercent(nullptr), 
-      lblMemoryPercent(nullptr), diskLayout(nullptr),
-      lblCpuInfo(nullptr), lblGpuInfo(nullptr), lblSoftwareOs(nullptr),
+      lblMemoryPercent(nullptr), diskLayout(nullptr), hardwareDiskLayout(nullptr),
+      lblCpuInfo(nullptr), lblGpuInfo(nullptr), lblDisplayInfo(nullptr),
+      lblMemoryInfo(nullptr), lblNetworkInfo(nullptr), lblSoftwareOs(nullptr),
       lblKernelInfo(nullptr), lblShellInfo(nullptr), lblUptime(nullptr),
       logsEdit(nullptr), menuLabels(), contentStack(nullptr),
       dashboardPanel(nullptr), hardwarePanel(nullptr), softwarePanel(nullptr),
@@ -330,6 +332,35 @@ QWidget* MainWindow::createHardwarePanel() {
     lblGpuInfo->setStyleSheet("color: #CDD6F4;");
     infoLayout->addWidget(lblGpuInfo);
 
+    lblDisplayInfo = new QLabel(card);
+    lblDisplayInfo->setFont(QFont("Consolas", 11));
+    lblDisplayInfo->setStyleSheet("color: #CDD6F4;");
+    infoLayout->addWidget(lblDisplayInfo);
+
+    lblMemoryInfo = new QLabel(card);
+    lblMemoryInfo->setFont(QFont("Consolas", 11));
+    lblMemoryInfo->setStyleSheet("color: #CDD6F4;");
+    infoLayout->addWidget(lblMemoryInfo);
+
+    QLabel* diskTitle = new QLabel("Disks", card);
+    diskTitle->setFont(QFont("Consolas", 11));
+    diskTitle->setStyleSheet("color: #F9E2AF; margin-top: 8px;");
+    infoLayout->addWidget(diskTitle);
+
+    hardwareDiskLayout = new QVBoxLayout();
+    hardwareDiskLayout->setSpacing(2);
+    infoLayout->addLayout(hardwareDiskLayout);
+
+    QLabel* networkTitle = new QLabel("Network", card);
+    networkTitle->setFont(QFont("Consolas", 11));
+    networkTitle->setStyleSheet("color: #89B4FA; margin-top: 8px;");
+    infoLayout->addWidget(networkTitle);
+
+    lblNetworkInfo = new QLabel(card);
+    lblNetworkInfo->setFont(QFont("Consolas", 11));
+    lblNetworkInfo->setStyleSheet("color: #CDD6F4;");
+    infoLayout->addWidget(lblNetworkInfo);
+
     cardLayout->addLayout(infoLayout);
 
     hLayout->addWidget(card, 1, Qt::AlignCenter);
@@ -499,6 +530,48 @@ void MainWindow::updateData() {
 
     lblCpuInfo->setText(QString("CPU: %1").arg(m_data->cpuInfo()));
     lblGpuInfo->setText(QString("GPU: %1").arg(m_data->gpuInfo()));
+
+    lblDisplayInfo->setText(QString("Display: %1").arg(m_data->displayInfo()));
+    
+    // Memory: 16.5 GiB / 32.0 GiB (51%)
+    qulonglong totalGB = m_data->memoryTotal() / (1024.0 * 1024.0 * 1024.0);
+    qulonglong usedGB = m_data->memoryUsed() / (1024.0 * 1024.0 * 1024.0);
+    int percent = m_data->memoryPercent();
+    lblMemoryInfo->setText(QString("Memory: %1 GiB / %2 GiB (%3%)")
+        .arg(usedGB).arg(totalGB).arg(percent));
+
+    // 更新 Hardware 面板的磁盘信息 - 显示磁盘型号和容量
+    if (hardwareDiskLayout) {
+        // 清空现有标签
+        while (hardwareDiskLayout->count()) {
+            QLayoutItem* item = hardwareDiskLayout->takeAt(0);
+            if (item->widget()) delete item->widget();
+            delete item;
+        }
+        
+        // 显示每个磁盘的硬件信息
+        DWORD driveMask = GetLogicalDrives();
+        for (int i = 0; i < 26; i++) {
+            if (driveMask & (1 << i)) {
+                QString drive = QString("%1:").arg(QChar('A' + i));
+                wchar_t path[] = L"X:\\";
+                path[0] = L'A' + i;
+                
+                wchar_t fsName[256];
+                if (GetVolumeInformationW(path, nullptr, 0, nullptr, nullptr, nullptr, fsName, 256)) {
+                    QString info = QString("%1 - %2").arg(drive).arg(QString::fromUtf16((const ushort*)fsName));
+                    QLabel* lbl = new QLabel();
+                    lbl->setFont(QFont("Consolas", 10));
+                    lbl->setStyleSheet("color: #F9E2AF;");
+                    lbl->setText(info);
+                    hardwareDiskLayout->addWidget(lbl);
+                }
+            }
+        }
+    }
+    
+    // 更新网络信息
+    lblNetworkInfo->setText(QString("Network: %1").arg(m_data->networkInfo()));
 
     lblSoftwareOs->setText(m_data->osInfo());
     lblKernelInfo->setText(QString("Kernel: %1").arg(m_data->kernelInfo()));

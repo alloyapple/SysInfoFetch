@@ -1,6 +1,7 @@
 #include "SystemDataProvider.h"
 #include <Windows.h>
 #include <shlobj.h>
+#include <iphlpapi.h>
 #include <QTimer>
 #include <QTime>
 #include <QSettings>
@@ -8,9 +9,10 @@
 #include <QFile>
 #include <QTextStream>
 #include <QDateTime>
+#pragma comment(lib, "iphlpapi.lib")
 
 SystemDataProvider::SystemDataProvider(QObject *parent)
-    : QObject(parent), m_cpuPercent(0), m_memoryPercent(0)
+    : QObject(parent), m_cpuPercent(0), m_memoryPercent(0), m_memoryTotal(0), m_memoryUsed(0)
 {
     m_cpuInfo = "Loading...";
     m_gpuInfo = "Loading...";
@@ -22,6 +24,9 @@ SystemDataProvider::SystemDataProvider(QObject *parent)
     m_username = "user";
     m_currentDir = "~";
     m_time = "00:00";
+    m_memoryInfo = "Loading...";
+    m_diskHardwareInfo = "Loading...";
+    m_networkInfo = "Loading...";
 
     QTimer::singleShot(500, this, &SystemDataProvider::fetchAllData);
 }
@@ -36,6 +41,10 @@ void SystemDataProvider::fetchAllData()
     fetchUptime();
     fetchUserInfo();
     fetchDiskInfo();
+    fetchMemoryUsage();
+    fetchMemoryInfo();
+    fetchDiskHardwareInfo();
+    fetchNetworkInfo();
     updateTime();
 
     emit dataChanged();
@@ -54,6 +63,9 @@ void SystemDataProvider::updateSystemData()
     fetchDiskInfo();
     fetchCpuUsage();
     fetchMemoryUsage();
+    fetchMemoryInfo();
+    fetchDiskHardwareInfo();
+    fetchNetworkInfo();
     emit dataChanged();
 }
 
@@ -221,9 +233,77 @@ void SystemDataProvider::fetchMemoryUsage()
     MEMORYSTATUSEX memInfo;
     memInfo.dwLength = sizeof(MEMORYSTATUSEX);
     if (GlobalMemoryStatusEx(&memInfo)) {
-        ULONGLONG totalMem = memInfo.ullTotalPhys;
+        m_memoryTotal = memInfo.ullTotalPhys;
         ULONGLONG availMem = memInfo.ullAvailPhys;
-        ULONGLONG usedMem = totalMem - availMem;
-        m_memoryPercent = (int)((usedMem * 100) / totalMem);
+        m_memoryUsed = m_memoryTotal - availMem;
+        m_memoryPercent = (int)((m_memoryUsed * 100) / m_memoryTotal);
     }
+}
+
+void SystemDataProvider::fetchMemoryInfo()
+{
+    if (m_memoryTotal > 0) {
+        qulonglong totalGB = m_memoryTotal / (1024 * 1024 * 1024);
+        qulonglong usedGB = m_memoryUsed / (1024 * 1024 * 1024);
+        m_memoryInfo = QString("%1 GiB RAM").arg(totalGB);
+    } else {
+        m_memoryInfo = "Unknown";
+    }
+    emit dataChanged();
+}
+
+void SystemDataProvider::fetchDiskHardwareInfo()
+{
+    // 获取所有磁盘的硬件信息
+    QStringList diskInfos;
+    DWORD drives = GetLogicalDrives();
+    for (int i = 0; i < 26; i++) {
+        if (drives & (1 << i)) {
+            QString drive = QString("%1:").arg(QChar('A' + i));
+            // 使用 DeviceIoControl 获取磁盘硬件信息（简化版）
+            // 这里暂时只显示磁盘型号（通过查询卷信息）
+            wchar_t path[] = L"X:\\";
+            path[0] = L'A' + i;
+            
+            wchar_t volumeName[MAX_PATH];
+            wchar_t fsName[MAX_PATH];
+            DWORD serialNumber;
+            if (GetVolumeInformationW(path, volumeName, MAX_PATH, &serialNumber, nullptr, nullptr, fsName, MAX_PATH)) {
+                QString info = QString("%1 (%2)").arg(drive).arg(QString::fromUtf16((const ushort*)fsName));
+                diskInfos.append(info);
+            }
+        }
+    }
+    m_diskHardwareInfo = diskInfos.isEmpty() ? "No disks" : diskInfos.join(", ");
+    emit dataChanged();
+}
+
+void SystemDataProvider::fetchNetworkInfo()
+{
+    // 获取网络适配器信息
+    ULONG bufferSize = 0;
+    GetAdaptersInfo(nullptr, &bufferSize);
+    if (bufferSize == 0) {
+        m_networkInfo = "No adapters";
+        return;
+    }
+    
+    IP_ADAPTER_INFO* adapterInfo = (IP_ADAPTER_INFO*)malloc(bufferSize);
+    if (adapterInfo && GetAdaptersInfo(adapterInfo, &bufferSize) == ERROR_SUCCESS) {
+        QStringList adapters;
+        for (IP_ADAPTER_INFO* adapter = adapterInfo; adapter; adapter = adapter->Next) {
+            if (adapter->Type == MIB_IF_TYPE_ETHERNET || adapter->Type == IF_TYPE_IEEE80211) {
+                QString name = QString::fromLocal8Bit(adapter->Description);
+                if (!name.isEmpty()) {
+                    adapters.append(name);
+                }
+            }
+        }
+        m_networkInfo = adapters.isEmpty() ? "No adapters" : adapters.join(", ");
+    } else {
+        m_networkInfo = "Unknown";
+    }
+    
+    if (adapterInfo) free(adapterInfo);
+    emit dataChanged();
 }

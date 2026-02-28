@@ -12,6 +12,9 @@ class SystemDataProvider : public QObject
     Q_PROPERTY(QString cpuInfo READ cpuInfo NOTIFY dataChanged)
     Q_PROPERTY(QString gpuInfo READ gpuInfo NOTIFY dataChanged)
     Q_PROPERTY(QString displayInfo READ displayInfo NOTIFY dataChanged)
+    Q_PROPERTY(QString memoryInfo READ memoryInfo NOTIFY dataChanged)
+    Q_PROPERTY(QString diskHardwareInfo READ diskHardwareInfo NOTIFY dataChanged)
+    Q_PROPERTY(QString networkInfo READ networkInfo NOTIFY dataChanged)
     Q_PROPERTY(QString osInfo READ osInfo NOTIFY dataChanged)
     Q_PROPERTY(QString kernelInfo READ kernelInfo NOTIFY dataChanged)
     Q_PROPERTY(QString shellInfo READ shellInfo NOTIFY dataChanged)
@@ -20,6 +23,8 @@ class SystemDataProvider : public QObject
     Q_PROPERTY(QString currentDir READ currentDir NOTIFY dataChanged)
     Q_PROPERTY(int cpuPercent READ cpuPercent NOTIFY dataChanged)
     Q_PROPERTY(int memoryPercent READ memoryPercent NOTIFY dataChanged)
+    Q_PROPERTY(qulonglong memoryTotal READ memoryTotal NOTIFY dataChanged)
+    Q_PROPERTY(qulonglong memoryUsed READ memoryUsed NOTIFY dataChanged)
     Q_PROPERTY(QString time READ time NOTIFY timeChanged)
 
 public:
@@ -37,6 +42,11 @@ public:
     int cpuPercent() const { return m_cpuPercent; }
     int memoryPercent() const { return m_memoryPercent; }
     QString time() const { return m_time; }
+    qulonglong memoryTotal() const { return m_memoryTotal; }
+    qulonglong memoryUsed() const { return m_memoryUsed; }
+    QString memoryInfo() const { return m_memoryInfo; }
+    QString diskHardwareInfo() const { return m_diskHardwareInfo; }
+    QString networkInfo() const { return m_networkInfo; }
 
     Q_INVOKABLE QVariantList getDiskInfo() const { return m_diskInfo; }
 
@@ -59,6 +69,9 @@ private:
     void fetchUptime();
     void fetchUserInfo();
     void fetchDiskInfo();
+    void fetchDiskHardwareInfo();
+    void fetchMemoryInfo();
+    void fetchNetworkInfo();
     void fetchCpuUsage();
     void fetchMemoryUsage();
 
@@ -75,6 +88,11 @@ private:
     int m_memoryPercent;
     QString m_time;
     QVariantList m_diskInfo;
+    qulonglong m_memoryTotal;
+    qulonglong m_memoryUsed;
+    QString m_memoryInfo;
+    QString m_diskHardwareInfo;
+    QString m_networkInfo;
 
     QTimer *m_updateTimer;
     QTimer *m_timeTimer;
