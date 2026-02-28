@@ -6,16 +6,38 @@
 #include <QDateTime>
 #include <Windows.h>
 
-MainWindow::MainWindow(SystemDataProvider* data, QWidget *parent) 
+// Helper: create a styled QLabel
+QLabel* MainWindow::makeLabel(const QString& text, int fontSize, const QString& color, bool bold, QWidget* parent) {
+    QLabel* lbl = new QLabel(text, parent);
+    lbl->setFont(QFont("Consolas", fontSize));
+    QString style = QString("color: %1;").arg(color);
+    if (bold) style += " font-weight: bold;";
+    lbl->setStyleSheet(style);
+    return lbl;
+}
+
+// Helper: clear and delete all items/widgets in a layout
+void MainWindow::clearLayout(QLayout* layout) {
+    if (!layout) return;
+    while (layout->count()) {
+        QLayoutItem* item = layout->takeAt(0);
+        if (!item) continue;
+        if (item->widget()) {
+            delete item->widget();
+        } else if (item->layout()) {
+            clearLayout(item->layout());
+        }
+        delete item;
+    }
+}
+
+MainWindow::MainWindow(SystemDataProvider* data, QWidget *parent)
     : QWidget(parent), m_data(data), m_dragging(false), m_selectedMenu(0),
-      lblUsername(nullptr), lblOs(nullptr), lblCpuPercent(nullptr), 
-      lblMemoryPercent(nullptr), diskLayout(nullptr), hardwareDiskLayout(nullptr),
-      lblCpuInfo(nullptr), lblGpuInfo(nullptr), lblDisplayInfo(nullptr),
-      lblMemoryInfo(nullptr), lblNetworkInfo(nullptr), lblSoftwareOs(nullptr),
-      lblKernelInfo(nullptr), lblShellInfo(nullptr), lblUptime(nullptr),
-      logsEdit(nullptr), menuLabels(), contentStack(nullptr),
-      dashboardPanel(nullptr), hardwarePanel(nullptr), softwarePanel(nullptr),
-      logsPanel(nullptr)
+      lblUsername(nullptr), lblOs(nullptr), lblCpuPercent(nullptr), lblMemoryPercent(nullptr),
+      diskLayout(nullptr), hardwareDiskLayout(nullptr), lblCpuInfo(nullptr), lblGpuInfo(nullptr),
+      lblDisplayInfo(nullptr), lblMemoryInfo(nullptr), lblNetworkInfo(nullptr), lblSoftwareOs(nullptr),
+      lblKernelInfo(nullptr), lblShellInfo(nullptr), lblUptime(nullptr), logsEdit(nullptr),
+      contentStack(nullptr), dashboardPanel(nullptr), hardwarePanel(nullptr), softwarePanel(nullptr), logsPanel(nullptr)
 {
     setupUI();
     connect(m_data, &SystemDataProvider::dataChanged, this, &MainWindow::updateData);
@@ -38,6 +60,7 @@ void MainWindow::mouseMoveEvent(QMouseEvent *event) {
 }
 
 void MainWindow::mouseReleaseEvent(QMouseEvent *event) {
+    Q_UNUSED(event);
     m_dragging = false;
 }
 
@@ -46,9 +69,7 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event) {
         QLabel* label = qobject_cast<QLabel*>(obj);
         if (label && label->property("menuIndex").isValid()) {
             int index = label->property("menuIndex").toInt();
-            if (event->type() == QEvent::MouseButtonRelease) {
-                selectMenu(index);
-            }
+            if (event->type() == QEvent::MouseButtonRelease) selectMenu(index);
             return true;
         }
     }
@@ -58,29 +79,26 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event) {
 void MainWindow::selectMenu(int index) {
     if (index == m_selectedMenu) return;
     m_selectedMenu = index;
-    for (int i = 0; i < menuLabels.size(); i++) {
-        if (i == index) {
+    for (int i = 0; i < menuLabels.size(); ++i) {
+        if (i == index)
             menuLabels[i]->setStyleSheet("color: #CDD6F4; padding: 8px; border-left: 2px solid #A6E3A1;");
-        } else {
+        else
             menuLabels[i]->setStyleSheet("color: #6C7086; padding: 8px;");
-        }
     }
-    if (contentStack) {
-        contentStack->setCurrentIndex(index);
-    }
+    if (contentStack) contentStack->setCurrentIndex(index);
 }
 
 void MainWindow::setupUI() {
     setWindowTitle("NeoFetch Pro");
     setFixedSize(1000, 700);
     setWindowFlags(Qt::FramelessWindowHint);
-    
+
     QPalette pal;
     pal.setColor(QPalette::Window, QColor("#0F0F14"));
     setPalette(pal);
 
     QHBoxLayout* mainLayout = new QHBoxLayout(this);
-    mainLayout->setContentsMargins(0, 0, 0, 0);
+    mainLayout->setContentsMargins(0,0,0,0);
     mainLayout->setSpacing(0);
 
     QWidget* sidebar = createSidebar();
@@ -96,26 +114,19 @@ QWidget* MainWindow::createSidebar() {
     side->setStyleSheet("background-color: #0F0F14;");
 
     QVBoxLayout* layout = new QVBoxLayout(side);
-    layout->setContentsMargins(10, 20, 10, 0);
+    layout->setContentsMargins(10,20,10,0);
     layout->setSpacing(8);
 
     QLabel* logo = new QLabel(side);
     QFileIconProvider iconProvider;
     QIcon icon = iconProvider.icon(QFileIconProvider::Computer);
-    QPixmap pixmap = icon.pixmap(36, 36);
-    if (!pixmap.isNull()) {
-        logo->setPixmap(pixmap.scaled(36, 36, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-    } else {
-        logo->setText("⚡");
-        logo->setFont(QFont("Consolas", 20));
-        logo->setStyleSheet("color: #6C7086;");
-    }
+    QPixmap pixmap = icon.pixmap(36,36);
+    if (!pixmap.isNull()) logo->setPixmap(pixmap.scaled(36,36,Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    else { logo->setText("⚡"); logo->setFont(QFont("Consolas",20)); logo->setStyleSheet("color: #6C7086;"); }
     logo->setAlignment(Qt::AlignCenter);
     layout->addWidget(logo, 0, Qt::AlignHCenter);
 
-    QLabel* title = new QLabel("NeoFetch Pro", side);
-    title->setFont(QFont("Consolas", 10));
-    title->setStyleSheet("color: #6C7086;");
+    QLabel* title = makeLabel("NeoFetch Pro", 10, "#6C7086", false, side);
     title->setAlignment(Qt::AlignCenter);
     layout->addWidget(title, 0, Qt::AlignHCenter);
 
@@ -124,25 +135,22 @@ QWidget* MainWindow::createSidebar() {
     line->setStyleSheet("color: #1E1E28;");
     layout->addWidget(line);
 
-    QString menuItems[] = {"Dashboard", "Hardware", "Software", "Logs"};
+    QString menuItems[] = {"Dashboard","Hardware","Software","Logs"};
     menuLabels.clear();
-    for (int i = 0; i < 4; i++) {
-        QLabel* menu = new QLabel(menuItems[i], side);
-        menu->setFont(QFont("Consolas", 11));
-        menu->setStyleSheet("color: #CDD6F4; padding: 8px;");
+    for (int i=0;i<4;++i) {
+        QLabel* menu = makeLabel(menuItems[i], 11, "#CDD6F4", false, side);
+        menu->setStyleSheet(menu->styleSheet() + " padding: 8px;");
         menu->setCursor(Qt::PointingHandCursor);
         menu->installEventFilter(this);
         menu->setProperty("menuIndex", i);
         menuLabels.append(menu);
-        if (i == 0) menu->setStyleSheet(menu->styleSheet() + "border-left: 2px solid #A6E3A1;");
+        if (i==0) menu->setStyleSheet(menu->styleSheet() + " border-left: 2px solid #A6E3A1;");
         layout->addWidget(menu);
     }
 
     layout->addStretch();
 
-    lblUsername = new QLabel(side);
-    lblUsername->setFont(QFont("Consolas", 10));
-    lblUsername->setStyleSheet("color: #A6E3A1; font-weight: bold;");
+    lblUsername = makeLabel(QString(), 10, "#A6E3A1", true, side);
     lblUsername->setAlignment(Qt::AlignCenter);
     layout->addWidget(lblUsername, 0, Qt::AlignHCenter);
 
@@ -154,7 +162,7 @@ QWidget* MainWindow::createContent() {
     content->setStyleSheet("background-color: #0F0F14;");
 
     QVBoxLayout* layout = new QVBoxLayout(content);
-    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setContentsMargins(0,0,0,0);
 
     QWidget* titleBar = createTitleBar();
     layout->addWidget(titleBar);
@@ -173,16 +181,14 @@ QWidget* MainWindow::createContent() {
     contentStack->addWidget(logsPanel);
 
     layout->addWidget(contentStack);
-
     return content;
 }
 
 QWidget* MainWindow::createDashboardPanel() {
     QWidget* container = new QWidget();
     container->setStyleSheet("background-color: transparent;");
-
     QHBoxLayout* hLayout = new QHBoxLayout(container);
-    hLayout->setContentsMargins(20, 20, 20, 20);
+    hLayout->setContentsMargins(20,20,20,20);
     hLayout->setSpacing(0);
 
     QFrame* card = new QFrame(container);
@@ -190,420 +196,215 @@ QWidget* MainWindow::createDashboardPanel() {
     card->setStyleSheet("QFrame { background-color: #18181F; border: 1px solid #1E1E28; border-radius: 12px; }");
 
     QVBoxLayout* cardLayout = new QVBoxLayout(card);
-    cardLayout->setContentsMargins(32, 24, 32, 24);
+    cardLayout->setContentsMargins(32,24,32,24);
     cardLayout->setSpacing(0);
     cardLayout->setSizeConstraint(QLayout::SetMinimumSize);
 
     QLabel* logo = new QLabel(card);
     QFileIconProvider iconProvider;
     QIcon icon = iconProvider.icon(QFileIconProvider::Computer);
-    QPixmap pixmap = icon.pixmap(28, 28);
-    if (!pixmap.isNull()) {
-        logo->setPixmap(pixmap.scaled(28, 28, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-    } else {
-        logo->setText("⚡");
-        logo->setFont(QFont("Consolas", 20));
-        logo->setStyleSheet("color: #CDD6F4;");
-    }
+    QPixmap pixmap = icon.pixmap(28,28);
+    if (!pixmap.isNull()) logo->setPixmap(pixmap.scaled(28,28,Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    else { logo->setText("⚡"); logo->setFont(QFont("Consolas",20)); logo->setStyleSheet("color: #CDD6F4;"); }
     logo->setAlignment(Qt::AlignCenter);
     cardLayout->addWidget(logo);
 
-    QLabel* appName = new QLabel("NeoFetch Pro", card);
-    appName->setFont(QFont("Consolas", 10));
-    appName->setStyleSheet("color: #6C7086; margin-top: 4px;");
+    QLabel* appName = makeLabel("NeoFetch Pro", 10, "#6C7086", false, card);
+    appName->setStyleSheet(appName->styleSheet() + " margin-top: 4px;");
     appName->setAlignment(Qt::AlignCenter);
     cardLayout->addWidget(appName);
 
     cardLayout->addSpacing(8);
-
-    QFrame* line1 = new QFrame(card);
-    line1->setFrameShape(QFrame::HLine);
-    line1->setStyleSheet("color: #1E1E28;");
-    cardLayout->addWidget(line1);
-
+    QFrame* line1 = new QFrame(card); line1->setFrameShape(QFrame::HLine); line1->setStyleSheet("color: #1E1E28;"); cardLayout->addWidget(line1);
     cardLayout->addSpacing(8);
 
-    lblUsername = new QLabel(card);
-    lblUsername->setFont(QFont("Consolas", 11));
-    lblUsername->setStyleSheet("color: #A6E3A1; font-weight: bold;");
+    lblUsername = makeLabel(QString(), 11, "#A6E3A1", true, card);
     cardLayout->addWidget(lblUsername);
-
     cardLayout->addSpacing(4);
 
-    QFrame* line2 = new QFrame(card);
-    line2->setFrameShape(QFrame::HLine);
-    line2->setStyleSheet("color: #1E1E28;");
-    cardLayout->addWidget(line2);
-
+    QFrame* line2 = new QFrame(card); line2->setFrameShape(QFrame::HLine); line2->setStyleSheet("color: #1E1E28;"); cardLayout->addWidget(line2);
     cardLayout->addSpacing(8);
 
-    lblOs = new QLabel(card);
-    lblOs->setFont(QFont("Consolas", 11));
-    lblOs->setStyleSheet("color: #CDD6F4;");
+    lblOs = makeLabel(QString(), 11, "#CDD6F4", false, card);
     cardLayout->addWidget(lblOs);
-
     cardLayout->addSpacing(8);
 
-    QFrame* line3 = new QFrame(card);
-    line3->setFrameShape(QFrame::HLine);
-    line3->setStyleSheet("color: #1E1E28;");
-    cardLayout->addWidget(line3);
-
+    QFrame* line3 = new QFrame(card); line3->setFrameShape(QFrame::HLine); line3->setStyleSheet("color: #1E1E28;"); cardLayout->addWidget(line3);
     cardLayout->addSpacing(8);
 
-    lblCpuPercent = new QLabel(card);
-    lblCpuPercent->setFont(QFont("Consolas", 11));
-    lblCpuPercent->setStyleSheet("color: #89B4FA;");
+    lblCpuPercent = makeLabel(QString(), 11, "#89B4FA", false, card);
     cardLayout->addWidget(lblCpuPercent);
-
     cardLayout->addSpacing(4);
 
-    lblMemoryPercent = new QLabel(card);
-    lblMemoryPercent->setFont(QFont("Consolas", 11));
-    lblMemoryPercent->setStyleSheet("color: #F5C2E7;");
+    lblMemoryPercent = makeLabel(QString(), 11, "#F5C2E7", false, card);
     cardLayout->addWidget(lblMemoryPercent);
-
     cardLayout->addSpacing(8);
 
-    QFrame* line4 = new QFrame(card);
-    line4->setFrameShape(QFrame::HLine);
-    line4->setStyleSheet("color: #1E1E28;");
-    cardLayout->addWidget(line4);
-
+    QFrame* line4 = new QFrame(card); line4->setFrameShape(QFrame::HLine); line4->setStyleSheet("color: #1E1E28;"); cardLayout->addWidget(line4);
     cardLayout->addSpacing(8);
 
-    diskLayout = new QVBoxLayout();
-    diskLayout->setSpacing(2);
-    cardLayout->addLayout(diskLayout);
-
+    diskLayout = new QVBoxLayout(); diskLayout->setSpacing(2); cardLayout->addLayout(diskLayout);
     cardLayout->addSpacing(8);
 
-    lblUptime = new QLabel(card);
-    lblUptime->setFont(QFont("Consolas", 10));
-    lblUptime->setStyleSheet("color: #6C7086;");
+    lblUptime = makeLabel(QString(), 10, "#6C7086", false, card);
     cardLayout->addWidget(lblUptime);
 
     hLayout->addWidget(card, 1, Qt::AlignCenter);
-
     return container;
 }
 
 QWidget* MainWindow::createHardwarePanel() {
-    QWidget* container = new QWidget();
-    container->setStyleSheet("background-color: transparent;");
+    QWidget* container = new QWidget(); container->setStyleSheet("background-color: transparent;");
+    QHBoxLayout* hLayout = new QHBoxLayout(container); hLayout->setContentsMargins(20,20,20,20); hLayout->setSpacing(0);
 
-    QHBoxLayout* hLayout = new QHBoxLayout(container);
-    hLayout->setContentsMargins(20, 20, 20, 20);
-    hLayout->setSpacing(0);
-
-    QFrame* card = new QFrame(container);
-    card->setFrameStyle(QFrame::Box);
+    QFrame* card = new QFrame(container); card->setFrameStyle(QFrame::Box);
     card->setStyleSheet("QFrame { background-color: #18181F; border: 1px solid #1E1E28; border-radius: 12px; }");
+    QVBoxLayout* cardLayout = new QVBoxLayout(card); cardLayout->setContentsMargins(32,24,32,24); cardLayout->setSpacing(0);
 
-    QVBoxLayout* cardLayout = new QVBoxLayout(card);
-    cardLayout->setContentsMargins(32, 24, 32, 24);
-    cardLayout->setSpacing(0);
-
-    QLabel* logo = new QLabel(card);
-    logo->setText("🖥");
-    logo->setFont(QFont("Consolas", 20));
-    logo->setStyleSheet("color: #CDD6F4;");
-    logo->setAlignment(Qt::AlignCenter);
-    cardLayout->addWidget(logo);
-    cardLayout->setSpacing(0);
-
-    QLabel* panelTitle = new QLabel("Hardware", card);
-    panelTitle->setFont(QFont("Consolas", 10));
-    panelTitle->setStyleSheet("color: #6C7086; margin-top: 4px;");
-    panelTitle->setAlignment(Qt::AlignCenter);
-    cardLayout->addWidget(panelTitle);
-
+    QLabel* logo = makeLabel(QString("🖥"), 20, "#CDD6F4", false, card); logo->setAlignment(Qt::AlignCenter); cardLayout->addWidget(logo);
+    QLabel* panelTitle = makeLabel("Hardware", 10, "#6C7086", false, card); panelTitle->setAlignment(Qt::AlignCenter); cardLayout->addWidget(panelTitle);
     cardLayout->addSpacing(20);
 
-    QVBoxLayout* infoLayout = new QVBoxLayout();
-    infoLayout->setSpacing(10);
-    infoLayout->setSizeConstraint(QLayout::SetMinimumSize);
+    QVBoxLayout* infoLayout = new QVBoxLayout(); infoLayout->setSpacing(10); infoLayout->setSizeConstraint(QLayout::SetMinimumSize);
 
-    lblCpuInfo = new QLabel(card);
-    lblCpuInfo->setFont(QFont("Consolas", 11));
-    lblCpuInfo->setStyleSheet("color: #CDD6F4;");
-    infoLayout->addWidget(lblCpuInfo);
+    lblCpuInfo = makeLabel(QString(), 11, "#CDD6F4", false, card); infoLayout->addWidget(lblCpuInfo);
+    lblGpuInfo = makeLabel(QString(), 11, "#CDD6F4", false, card); infoLayout->addWidget(lblGpuInfo);
+    lblDisplayInfo = makeLabel(QString(), 11, "#CDD6F4", false, card); infoLayout->addWidget(lblDisplayInfo);
+    lblMemoryInfo = makeLabel(QString(), 11, "#CDD6F4", false, card); infoLayout->addWidget(lblMemoryInfo);
 
-    lblGpuInfo = new QLabel(card);
-    lblGpuInfo->setFont(QFont("Consolas", 11));
-    lblGpuInfo->setStyleSheet("color: #CDD6F4;");
-    infoLayout->addWidget(lblGpuInfo);
+    QLabel* diskTitle = makeLabel("Disks", 11, "#F9E2AF", false, card); infoLayout->addWidget(diskTitle);
+    hardwareDiskLayout = new QVBoxLayout(); hardwareDiskLayout->setSpacing(2); infoLayout->addLayout(hardwareDiskLayout);
 
-    lblDisplayInfo = new QLabel(card);
-    lblDisplayInfo->setFont(QFont("Consolas", 11));
-    lblDisplayInfo->setStyleSheet("color: #CDD6F4;");
-    infoLayout->addWidget(lblDisplayInfo);
-
-    lblMemoryInfo = new QLabel(card);
-    lblMemoryInfo->setFont(QFont("Consolas", 11));
-    lblMemoryInfo->setStyleSheet("color: #CDD6F4;");
-    infoLayout->addWidget(lblMemoryInfo);
-
-    QLabel* diskTitle = new QLabel("Disks", card);
-    diskTitle->setFont(QFont("Consolas", 11));
-    diskTitle->setStyleSheet("color: #F9E2AF; margin-top: 8px;");
-    infoLayout->addWidget(diskTitle);
-
-    hardwareDiskLayout = new QVBoxLayout();
-    hardwareDiskLayout->setSpacing(2);
-    infoLayout->addLayout(hardwareDiskLayout);
-
-    QLabel* networkTitle = new QLabel("Network", card);
-    networkTitle->setFont(QFont("Consolas", 11));
-    networkTitle->setStyleSheet("color: #89B4FA; margin-top: 8px;");
-    infoLayout->addWidget(networkTitle);
-
-    lblNetworkInfo = new QLabel(card);
-    lblNetworkInfo->setFont(QFont("Consolas", 11));
-    lblNetworkInfo->setStyleSheet("color: #CDD6F4;");
-    infoLayout->addWidget(lblNetworkInfo);
+    QLabel* networkTitle = makeLabel("Network", 11, "#89B4FA", false, card); infoLayout->addWidget(networkTitle);
+    lblNetworkInfo = makeLabel(QString(), 11, "#CDD6F4", false, card); infoLayout->addWidget(lblNetworkInfo);
 
     cardLayout->addLayout(infoLayout);
-
     hLayout->addWidget(card, 1, Qt::AlignCenter);
-
     return container;
 }
 
 QWidget* MainWindow::createSoftwarePanel() {
-    QWidget* container = new QWidget();
-    container->setStyleSheet("background-color: transparent;");
+    QWidget* container = new QWidget(); container->setStyleSheet("background-color: transparent;");
+    QHBoxLayout* hLayout = new QHBoxLayout(container); hLayout->setContentsMargins(20,20,20,20); hLayout->setSpacing(0);
 
-    QHBoxLayout* hLayout = new QHBoxLayout(container);
-    hLayout->setContentsMargins(20, 20, 20, 20);
-    hLayout->setSpacing(0);
-
-    QFrame* card = new QFrame(container);
-    card->setFrameStyle(QFrame::Box);
+    QFrame* card = new QFrame(container); card->setFrameStyle(QFrame::Box);
     card->setStyleSheet("QFrame { background-color: #18181F; border: 1px solid #1E1E28; border-radius: 12px; }");
+    QVBoxLayout* cardLayout = new QVBoxLayout(card); cardLayout->setContentsMargins(32,24,32,24); cardLayout->setSpacing(0);
 
-    QVBoxLayout* cardLayout = new QVBoxLayout(card);
-    cardLayout->setContentsMargins(32, 24, 32, 24);
-    cardLayout->setSpacing(0);
-
-    QLabel* logo = new QLabel(card);
-    logo->setText("📦");
-    logo->setFont(QFont("Consolas", 20));
-    logo->setStyleSheet("color: #CDD6F4;");
-    logo->setAlignment(Qt::AlignCenter);
-    cardLayout->addWidget(logo);
-    cardLayout->setSpacing(0);
-
-    QLabel* panelTitle = new QLabel("Software", card);
-    panelTitle->setFont(QFont("Consolas", 10));
-    panelTitle->setStyleSheet("color: #6C7086; margin-top: 4px;");
-    panelTitle->setAlignment(Qt::AlignCenter);
-    cardLayout->addWidget(panelTitle);
-
+    QLabel* logo = makeLabel(QString("📦"), 20, "#CDD6F4", false, card); logo->setAlignment(Qt::AlignCenter); cardLayout->addWidget(logo);
+    QLabel* panelTitle = makeLabel("Software", 10, "#6C7086", false, card); panelTitle->setAlignment(Qt::AlignCenter); cardLayout->addWidget(panelTitle);
     cardLayout->addSpacing(20);
 
-    QVBoxLayout* infoLayout = new QVBoxLayout();
-    infoLayout->setSpacing(10);
-
-    lblSoftwareOs = new QLabel(card);
-    lblSoftwareOs->setFont(QFont("Consolas", 11));
-    lblSoftwareOs->setStyleSheet("color: #CDD6F4;");
-    infoLayout->addWidget(lblSoftwareOs);
-
-    lblKernelInfo = new QLabel(card);
-    lblKernelInfo->setFont(QFont("Consolas", 11));
-    lblKernelInfo->setStyleSheet("color: #CDD6F4;");
-    infoLayout->addWidget(lblKernelInfo);
-
-    lblShellInfo = new QLabel(card);
-    lblShellInfo->setFont(QFont("Consolas", 11));
-    lblShellInfo->setStyleSheet("color: #CDD6F4;");
-    infoLayout->addWidget(lblShellInfo);
+    QVBoxLayout* infoLayout = new QVBoxLayout(); infoLayout->setSpacing(10);
+    lblSoftwareOs = makeLabel(QString(), 11, "#CDD6F4", false, card); infoLayout->addWidget(lblSoftwareOs);
+    lblKernelInfo = makeLabel(QString(), 11, "#CDD6F4", false, card); infoLayout->addWidget(lblKernelInfo);
+    lblShellInfo = makeLabel(QString(), 11, "#CDD6F4", false, card); infoLayout->addWidget(lblShellInfo);
 
     cardLayout->addLayout(infoLayout);
-
     hLayout->addWidget(card, 1, Qt::AlignCenter);
-
     return container;
 }
 
 QWidget* MainWindow::createLogsPanel() {
-    QWidget* container = new QWidget();
-    container->setStyleSheet("background-color: transparent;");
+    QWidget* container = new QWidget(); container->setStyleSheet("background-color: transparent;");
+    QHBoxLayout* hLayout = new QHBoxLayout(container); hLayout->setContentsMargins(20,20,20,20); hLayout->setSpacing(0);
 
-    QHBoxLayout* hLayout = new QHBoxLayout(container);
-    hLayout->setContentsMargins(20, 20, 20, 20);
-    hLayout->setSpacing(0);
-
-    QFrame* card = new QFrame(container);
-    card->setFrameStyle(QFrame::Box);
+    QFrame* card = new QFrame(container); card->setFrameStyle(QFrame::Box);
     card->setStyleSheet("QFrame { background-color: #18181F; border: 1px solid #1E1E28; border-radius: 12px; }");
+    QVBoxLayout* cardLayout = new QVBoxLayout(card); cardLayout->setContentsMargins(32,24,32,24); cardLayout->setSpacing(0);
 
-    QVBoxLayout* cardLayout = new QVBoxLayout(card);
-    cardLayout->setContentsMargins(32, 24, 32, 24);
-    cardLayout->setSpacing(0);
-
-    QLabel* logo = new QLabel(card);
-    logo->setText("📋");
-    logo->setFont(QFont("Consolas", 20));
-    logo->setStyleSheet("color: #CDD6F4;");
-    logo->setAlignment(Qt::AlignCenter);
-    cardLayout->addWidget(logo);
-    cardLayout->setSpacing(0);
-
-    QLabel* panelTitle = new QLabel("Logs", card);
-    panelTitle->setFont(QFont("Consolas", 10));
-    panelTitle->setStyleSheet("color: #6C7086; margin-top: 4px;");
-    panelTitle->setAlignment(Qt::AlignCenter);
-    cardLayout->addWidget(panelTitle);
-
+    QLabel* logo = makeLabel(QString("📋"), 20, "#CDD6F4", false, card); logo->setAlignment(Qt::AlignCenter); cardLayout->addWidget(logo);
+    QLabel* panelTitle = makeLabel("Logs", 10, "#6C7086", false, card); panelTitle->setAlignment(Qt::AlignCenter); cardLayout->addWidget(panelTitle);
     cardLayout->addSpacing(20);
 
-    QTextEdit* edit = new QTextEdit(card);
-    edit->setReadOnly(true);
+    QTextEdit* edit = new QTextEdit(card); edit->setReadOnly(true);
     edit->setStyleSheet("color: #CDD6F4; background-color: transparent; border: none; font-family: Consolas; font-size: 10px;");
-    edit->setFont(QFont("Consolas", 10));
-    cardLayout->addWidget(edit);
+    edit->setFont(QFont("Consolas", 10)); cardLayout->addWidget(edit);
 
     hLayout->addWidget(card, 1, Qt::AlignCenter);
-
     logsEdit = edit;
     return container;
 }
 
 QWidget* MainWindow::createTitleBar() {
-    QWidget* bar = new QWidget(this);
-    bar->setFixedHeight(36);
-    bar->setStyleSheet("background-color: #0F0F14;");
+    QWidget* bar = new QWidget(this); bar->setFixedHeight(36); bar->setStyleSheet("background-color: #0F0F14;");
+    QHBoxLayout* layout = new QHBoxLayout(bar); layout->setContentsMargins(16,0,0,0);
 
-    QHBoxLayout* layout = new QHBoxLayout(bar);
-    layout->setContentsMargins(16, 0, 0, 0);
-
-    QLabel* title = new QLabel("NeoFetch Pro 1.0.0", bar);
-    title->setFont(QFont("Consolas", 11));
-    title->setStyleSheet("color: #6C7086;");
-    layout->addWidget(title);
-
+    QLabel* title = makeLabel("NeoFetch Pro 1.0.0", 11, "#6C7086", false, bar); layout->addWidget(title);
     layout->addStretch();
 
-    QPushButton* minBtn = new QPushButton("─", bar);
-    minBtn->setFixedSize(46, 36);
+    QPushButton* minBtn = new QPushButton("─", bar); minBtn->setFixedSize(46,36);
     minBtn->setStyleSheet("QPushButton { background: transparent; color: #6C7086; border: none; } QPushButton:hover { background: #1E1E28; }");
-    connect(minBtn, &QPushButton::clicked, this, &QWidget::showMinimized);
-    layout->addWidget(minBtn);
+    connect(minBtn, &QPushButton::clicked, this, &QWidget::showMinimized); layout->addWidget(minBtn);
 
-    QPushButton* maxBtn = new QPushButton("□", bar);
-    maxBtn->setFixedSize(46, 36);
+    QPushButton* maxBtn = new QPushButton("□", bar); maxBtn->setFixedSize(46,36);
     maxBtn->setStyleSheet("QPushButton { background: transparent; color: #6C7086; border: none; } QPushButton:hover { background: #1E1E28; }");
-    connect(maxBtn, &QPushButton::clicked, [this]() {
-        if (isMaximized()) showNormal(); else showMaximized();
-    });
-    layout->addWidget(maxBtn);
+    connect(maxBtn, &QPushButton::clicked, [this]() { if (isMaximized()) showNormal(); else showMaximized(); }); layout->addWidget(maxBtn);
 
-    QPushButton* closeBtn = new QPushButton("✕", bar);
-    closeBtn->setFixedSize(46, 36);
+    QPushButton* closeBtn = new QPushButton("✕", bar); closeBtn->setFixedSize(46,36);
     closeBtn->setStyleSheet("QPushButton { background: transparent; color: #6C7086; border: none; } QPushButton:hover { background: #F38BA8; color: white; }");
-    connect(closeBtn, &QPushButton::clicked, this, &QWidget::close);
-    layout->addWidget(closeBtn);
+    connect(closeBtn, &QPushButton::clicked, this, &QWidget::close); layout->addWidget(closeBtn);
 
     return bar;
 }
 
 void MainWindow::updateData() {
-    // 调试日志
     QString logPath = QStandardPaths::writableLocation(QStandardPaths::TempLocation) + "/neofetch_ui_debug.txt";
     QFile logFile(logPath);
     if (logFile.open(QIODevice::Append | QIODevice::Text)) {
         QTextStream out(&logFile);
-        out << "updateData called, disk count: " << m_data->getDiskInfo().size() << endl;
+        out << "updateData called, disk count: " << m_data->getDiskInfo().size() << Qt::endl;
         logFile.close();
     }
-    
-    // 获取磁盘数据（一次获取，多处使用）
+
     QList<QVariant> disks = m_data->getDiskInfo();
-    
-    lblUsername->setText(QString("%1@%2")
-        .arg(m_data->username())
-        .arg(m_data->currentDir()));
-    
+
+    lblUsername->setText(QString("%1@%2").arg(m_data->username()).arg(m_data->currentDir()));
     lblOs->setText(m_data->osInfo());
     lblCpuPercent->setText(QString("CPU: %1%").arg(m_data->cpuPercent()));
     lblMemoryPercent->setText(QString("Memory: %1%").arg(m_data->memoryPercent()));
 
     lblCpuInfo->setText(QString("CPU: %1").arg(m_data->cpuInfo()));
     lblGpuInfo->setText(QString("GPU: %1").arg(m_data->gpuInfo()));
-
     lblDisplayInfo->setText(QString("Display: %1").arg(m_data->displayInfo()));
-    
-    // Memory: 16.5 GiB / 32.0 GiB (51%)
+
     qulonglong totalGB = m_data->memoryTotal() / (1024.0 * 1024.0 * 1024.0);
     qulonglong usedGB = m_data->memoryUsed() / (1024.0 * 1024.0 * 1024.0);
     int percent = m_data->memoryPercent();
-    lblMemoryInfo->setText(QString("Memory: %1 GiB / %2 GiB (%3%)")
-        .arg(usedGB).arg(totalGB).arg(percent));
+    lblMemoryInfo->setText(QString("Memory: %1 GiB / %2 GiB (%3%)").arg(usedGB).arg(totalGB).arg(percent));
 
-    // 更新 Hardware 面板的磁盘信息 - 显示磁盘型号和容量
     if (hardwareDiskLayout) {
-        // 清空现有标签
-        while (hardwareDiskLayout->count()) {
-            QLayoutItem* item = hardwareDiskLayout->takeAt(0);
-            if (item->widget()) delete item->widget();
-            delete item;
-        }
-        
-        // 显示每个磁盘的硬件信息
-        DWORD driveMask = GetLogicalDrives();
-        for (int i = 0; i < 26; i++) {
-            if (driveMask & (1 << i)) {
-                QString drive = QString("%1:").arg(QChar('A' + i));
-                wchar_t path[] = L"X:\\";
-                path[0] = L'A' + i;
-                
-                wchar_t fsName[256];
-                if (GetVolumeInformationW(path, nullptr, 0, nullptr, nullptr, nullptr, fsName, 256)) {
-                    QString info = QString("%1 - %2").arg(drive).arg(QString::fromUtf16((const ushort*)fsName));
-                    QLabel* lbl = new QLabel();
-                    lbl->setFont(QFont("Consolas", 10));
-                    lbl->setStyleSheet("color: #F9E2AF;");
-                    lbl->setText(info);
-                    lbl->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-                    hardwareDiskLayout->addWidget(lbl);
-                }
+        clearLayout(hardwareDiskLayout);
+        QString hwInfo = m_data->diskHardwareInfo();
+        if (!hwInfo.isEmpty()) {
+            const QStringList lines = hwInfo.split('\n', Qt::SkipEmptyParts);
+            for (const QString &line : lines) {
+                QLabel* lbl = makeLabel(line.trimmed(), 10, "#F9E2AF", false, nullptr);
+                lbl->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+                hardwareDiskLayout->addWidget(lbl);
             }
+        } else {
+            QLabel* lbl = makeLabel("No disk hardware info", 10, "#F9E2AF", false, nullptr);
+            hardwareDiskLayout->addWidget(lbl);
         }
     }
-    
-    // 更新网络信息
-    lblNetworkInfo->setText(QString("Network: %1").arg(m_data->networkInfo()));
 
+    lblNetworkInfo->setText(QString("Network: %1").arg(m_data->networkInfo()));
     lblSoftwareOs->setText(m_data->osInfo());
     lblKernelInfo->setText(QString("Kernel: %1").arg(m_data->kernelInfo()));
     lblShellInfo->setText(QString("Shell: %1").arg(m_data->shellInfo()));
 
-    // 更新磁盘信息 - 显示所有磁盘
     if (diskLayout) {
-        // 清空现有标签
-        while (diskLayout->count()) {
-            QLayoutItem* item = diskLayout->takeAt(0);
-            if (item->widget()) delete item->widget();
-            delete item;
-        }
-        
+        clearLayout(diskLayout);
         for (const auto& disk : disks) {
             QVariantMap d = disk.toMap();
             QString drive = d["drive"].toString().trimmed();
             QString fsType = d["fstype"].toString();
             QString used = d["used"].toString();
             QString total = d["total"].toString();
-            int percent = d["percent"].toInt();
-            
-            QString diskText = QString("%1 %2 %3 GiB / %4 GiB (%5%)")
-                .arg(drive).arg(fsType).arg(used).arg(total).arg(percent);
-            
-            QLabel* lbl = new QLabel();
-            lbl->setFont(QFont("Consolas", 10));
-            lbl->setStyleSheet("color: #F9E2AF;");
-            lbl->setText(diskText);
+            int perc = d["percent"].toInt();
+            QString diskText = QString("%1 %2 %3 GiB / %4 GiB (%5%)").arg(drive).arg(fsType).arg(used).arg(total).arg(perc);
+            QLabel* lbl = makeLabel(diskText, 10, "#F9E2AF", false, nullptr);
             diskLayout->addWidget(lbl);
         }
     }
@@ -618,18 +419,11 @@ void MainWindow::updateData() {
         logs += QString("Kernel: %1\n").arg(m_data->kernelInfo());
         logs += QString("Shell: %1\n").arg(m_data->shellInfo());
         logs += QString("Uptime: %1\n\n").arg(m_data->uptime());
-        
         logs += "=== Disk Usage ===\n\n";
         for (auto& disk : disks) {
             QVariantMap d = disk.toMap();
-            logs += QString("%1 (%2): %3 GiB / %4 GiB (%5%)\n")
-                .arg(d["drive"].toString())
-                .arg(d["fstype"].toString())
-                .arg(d["used"].toString())
-                .arg(d["total"].toString())
-                .arg(d["percent"].toInt());
+            logs += QString("%1 (%2): %3 GiB / %4 GiB (%5%)\n").arg(d["drive"].toString()).arg(d["fstype"].toString()).arg(d["used"].toString()).arg(d["total"].toString()).arg(d["percent"].toInt());
         }
-        
         logsEdit->setText(logs);
     }
 }

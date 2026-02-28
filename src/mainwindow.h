@@ -38,6 +38,10 @@ private:
     QWidget* createTitleBar();
     void updateData();
 
+    // Helper to create styled labels and clear layouts
+    QLabel* makeLabel(const QString& text = QString(), int fontSize = 11, const QString& color = "#CDD6F4", bool bold = false, QWidget* parent = nullptr);
+    void clearLayout(QLayout* layout);
+
     SystemDataProvider* m_data;
     bool m_dragging;
     QPoint m_dragPos;
