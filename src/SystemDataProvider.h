@@ -18,6 +18,8 @@ class SystemDataProvider : public QObject
     Q_PROPERTY(QString uptime READ uptime NOTIFY dataChanged)
     Q_PROPERTY(QString username READ username NOTIFY dataChanged)
     Q_PROPERTY(QString currentDir READ currentDir NOTIFY dataChanged)
+    Q_PROPERTY(int cpuPercent READ cpuPercent NOTIFY dataChanged)
+    Q_PROPERTY(int memoryPercent READ memoryPercent NOTIFY dataChanged)
     Q_PROPERTY(QString time READ time NOTIFY timeChanged)
 
 public:
@@ -32,6 +34,8 @@ public:
     QString uptime() const { return m_uptime; }
     QString username() const { return m_username; }
     QString currentDir() const { return m_currentDir; }
+    int cpuPercent() const { return m_cpuPercent; }
+    int memoryPercent() const { return m_memoryPercent; }
     QString time() const { return m_time; }
 
     Q_INVOKABLE QVariantList getDiskInfo() const { return m_diskInfo; }
@@ -55,6 +59,8 @@ private:
     void fetchUptime();
     void fetchUserInfo();
     void fetchDiskInfo();
+    void fetchCpuUsage();
+    void fetchMemoryUsage();
 
     QString m_cpuInfo;
     QString m_gpuInfo;
@@ -65,6 +71,8 @@ private:
     QString m_uptime;
     QString m_username;
     QString m_currentDir;
+    int m_cpuPercent;
+    int m_memoryPercent;
     QString m_time;
     QVariantList m_diskInfo;
 

@@ -1,11 +1,16 @@
 #include "SystemDataProvider.h"
 #include <Windows.h>
+#include <shlobj.h>
 #include <QTimer>
 #include <QTime>
 #include <QSettings>
+#include <QStandardPaths>
+#include <QFile>
+#include <QTextStream>
+#include <QDateTime>
 
 SystemDataProvider::SystemDataProvider(QObject *parent)
-    : QObject(parent)
+    : QObject(parent), m_cpuPercent(0), m_memoryPercent(0)
 {
     m_cpuInfo = "Loading...";
     m_gpuInfo = "Loading...";
@@ -33,6 +38,8 @@ void SystemDataProvider::fetchAllData()
     fetchDiskInfo();
     updateTime();
 
+    emit dataChanged();
+
     m_updateTimer = new QTimer(this);
     connect(m_updateTimer, &QTimer::timeout, this, &SystemDataProvider::updateSystemData);
     m_updateTimer->start(5000);
@@ -45,6 +52,8 @@ void SystemDataProvider::fetchAllData()
 void SystemDataProvider::updateSystemData()
 {
     fetchDiskInfo();
+    fetchCpuUsage();
+    fetchMemoryUsage();
     emit dataChanged();
 }
 
@@ -124,7 +133,13 @@ void SystemDataProvider::fetchUserInfo()
     if (GetUserNameW(name, &size)) {
         m_username = QString::fromUtf16((const ushort*)name);
     }
-    m_currentDir = "~";
+    
+    wchar_t path[MAX_PATH];
+    if (SHGetFolderPathW(NULL, CSIDL_PROFILE, NULL, 0, path) == S_OK) {
+        m_currentDir = QString::fromUtf16((const ushort*)path);
+    } else {
+        m_currentDir = "";
+    }
     emit dataChanged();
 }
 
@@ -132,21 +147,83 @@ void SystemDataProvider::fetchDiskInfo()
 {
     m_diskInfo.clear();
     DWORD drives = GetLogicalDrives();
+    
     for (int i = 0; i < 26; i++) {
         if (drives & (1 << i)) {
-            QString drive = QString("%1:").arg('A' + i);
-            ULARGE_INTEGER freeBytes, totalBytes;
-            if (GetDiskFreeSpaceExW(QString(drive + "\\").toStdWString().c_str(), &freeBytes, &totalBytes, nullptr)) {
-                double totalGB = totalBytes.QuadPart / (1024.0 * 1024.0 * 1024.0);
-                double freeGB = freeBytes.QuadPart / (1024.0 * 1024.0 * 1024.0);
+            QString drive = QString("%1:").arg(QChar('A' + i));
+            wchar_t path[4];
+            path[0] = L'A' + i;
+            path[1] = L':';
+            path[2] = L'\\';
+            path[3] = L'\0';
+            
+            DWORD sectorsPerCluster, bytesPerSector, freeClusters, totalClusters;
+            if (GetDiskFreeSpaceW(path, &sectorsPerCluster, &bytesPerSector, &freeClusters, &totalClusters)) {
+                ULONGLONG totalBytes = (ULONGLONG)totalClusters * sectorsPerCluster * bytesPerSector;
+                ULONGLONG freeBytes = (ULONGLONG)freeClusters * sectorsPerCluster * bytesPerSector;
+                
+                double totalGB = totalBytes / (1024.0 * 1024.0 * 1024.0);
+                double freeGB = freeBytes / (1024.0 * 1024.0 * 1024.0);
                 int percent = totalGB > 0 ? (int)((totalGB - freeGB) / totalGB * 100) : 0;
+                
+                QString fsType = "NTFS";
+                wchar_t fsName[256];
+                if (GetVolumeInformationW(path, nullptr, 0, nullptr, nullptr, nullptr, fsName, 256)) {
+                    fsType = QString::fromUtf16((const ushort*)fsName);
+                }
+                
                 QVariantMap d;
                 d["drive"] = drive;
                 d["total"] = QString::number(totalGB, 'f', 1);
                 d["used"] = QString::number(totalGB - freeGB, 'f', 1);
                 d["percent"] = percent;
+                d["fstype"] = fsType;
                 m_diskInfo.append(d);
             }
         }
+    }
+    emit dataChanged();
+}
+
+void SystemDataProvider::fetchCpuUsage()
+{
+    static FILETIME idleTime, kernelTime, userTime;
+    static bool first = true;
+    FILETIME idle, kernel, user;
+    
+    if (GetSystemTimes(&idle, &kernel, &user)) {
+        if (!first) {
+            ULONGLONG idle1 = ((ULONGLONG)idleTime.dwHighDateTime << 32) | idleTime.dwLowDateTime;
+            ULONGLONG idle2 = ((ULONGLONG)idle.dwHighDateTime << 32) | idle.dwLowDateTime;
+            ULONGLONG kernel1 = ((ULONGLONG)kernelTime.dwHighDateTime << 32) | kernelTime.dwLowDateTime;
+            ULONGLONG kernel2 = ((ULONGLONG)kernel.dwHighDateTime << 32) | kernel.dwLowDateTime;
+            ULONGLONG user1 = ((ULONGLONG)userTime.dwHighDateTime << 32) | userTime.dwLowDateTime;
+            ULONGLONG user2 = ((ULONGLONG)user.dwHighDateTime << 32) | user.dwLowDateTime;
+            
+            ULONGLONG idleDiff = idle2 - idle1;
+            ULONGLONG kernelDiff = kernel2 - kernel1;
+            ULONGLONG userDiff = user2 - user1;
+            ULONGLONG total = kernelDiff + userDiff;
+            
+            if (total > 0) {
+                m_cpuPercent = (int)(100 - (idleDiff * 100 / total));
+            }
+        }
+        first = false;
+        idleTime = idle;
+        kernelTime = kernel;
+        userTime = user;
+    }
+}
+
+void SystemDataProvider::fetchMemoryUsage()
+{
+    MEMORYSTATUSEX memInfo;
+    memInfo.dwLength = sizeof(MEMORYSTATUSEX);
+    if (GlobalMemoryStatusEx(&memInfo)) {
+        ULONGLONG totalMem = memInfo.ullTotalPhys;
+        ULONGLONG availMem = memInfo.ullAvailPhys;
+        ULONGLONG usedMem = totalMem - availMem;
+        m_memoryPercent = (int)((usedMem * 100) / totalMem);
     }
 }
