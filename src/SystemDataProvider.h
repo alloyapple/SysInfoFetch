@@ -15,6 +15,7 @@ class SystemDataProvider : public QObject
     Q_PROPERTY(QString memoryInfo READ memoryInfo NOTIFY dataChanged)
     Q_PROPERTY(QString networkInfo READ networkInfo NOTIFY dataChanged)
     Q_PROPERTY(QString diskHardwareInfo READ diskHardwareInfo NOTIFY dataChanged)
+    Q_PROPERTY(QString memoryHardwareInfo READ memoryHardwareInfo NOTIFY dataChanged)
     Q_PROPERTY(QString osInfo READ osInfo NOTIFY dataChanged)
     Q_PROPERTY(QString kernelInfo READ kernelInfo NOTIFY dataChanged)
     Q_PROPERTY(QString shellInfo READ shellInfo NOTIFY dataChanged)
@@ -46,6 +47,7 @@ public:
     qulonglong memoryUsed() const { return m_memoryUsed; }
     QString memoryInfo() const { return m_memoryInfo; }
     QString diskHardwareInfo() const { return m_diskHardwareInfo; }
+    QString memoryHardwareInfo() const { return m_memoryHardwareInfo; }
     QString networkInfo() const { return m_networkInfo; }
 
     Q_INVOKABLE QVariantList getDiskInfo() const { return m_diskInfo; }
@@ -71,6 +73,7 @@ private:
     void fetchDiskInfo();
     void fetchMemoryInfo();
     void fetchDiskHardwareInfo();
+    void fetchMemoryHardwareInfo();
     void fetchNetworkInfo();
     void fetchCpuUsage();
     void fetchMemoryUsage();
@@ -92,6 +95,7 @@ private:
     qulonglong m_memoryUsed;
     QString m_memoryInfo;
     QString m_diskHardwareInfo;
+    QString m_memoryHardwareInfo;
     QString m_networkInfo;
 
     QTimer *m_updateTimer;

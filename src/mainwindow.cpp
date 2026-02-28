@@ -271,6 +271,7 @@ QWidget* MainWindow::createHardwarePanel() {
     lblGpuInfo = makeLabel(QString(), 11, "#CDD6F4", false, card); infoLayout->addWidget(lblGpuInfo);
     lblDisplayInfo = makeLabel(QString(), 11, "#CDD6F4", false, card); infoLayout->addWidget(lblDisplayInfo);
     lblMemoryInfo = makeLabel(QString(), 11, "#CDD6F4", false, card); infoLayout->addWidget(lblMemoryInfo);
+    lblMemoryHardware = makeLabel(QString(), 11, "#CDD6F4", false, card); infoLayout->addWidget(lblMemoryHardware);
 
     QLabel* diskTitle = makeLabel("Disks", 11, "#F9E2AF", false, card); infoLayout->addWidget(diskTitle);
     hardwareDiskLayout = new QVBoxLayout(); hardwareDiskLayout->setSpacing(2); infoLayout->addLayout(hardwareDiskLayout);
@@ -354,6 +355,8 @@ void MainWindow::updateData() {
     if (logFile.open(QIODevice::Append | QIODevice::Text)) {
         QTextStream out(&logFile);
         out << "updateData called, disk count: " << m_data->getDiskInfo().size() << Qt::endl;
+        out << "displayInfo:\n" << m_data->displayInfo() << Qt::endl;
+        out << "memoryHardwareInfo:\n" << m_data->memoryHardwareInfo() << Qt::endl;
         logFile.close();
     }
 
@@ -372,6 +375,11 @@ void MainWindow::updateData() {
     qulonglong usedGB = m_data->memoryUsed() / (1024.0 * 1024.0 * 1024.0);
     int percent = m_data->memoryPercent();
     lblMemoryInfo->setText(QString("Memory: %1 GiB / %2 GiB (%3%)").arg(usedGB).arg(totalGB).arg(percent));
+
+    // Memory hardware info (manufacturer, size, speed)
+    if (lblMemoryHardware) {
+        lblMemoryHardware->setText(m_data->memoryHardwareInfo());
+    }
 
     if (hardwareDiskLayout) {
         clearLayout(hardwareDiskLayout);

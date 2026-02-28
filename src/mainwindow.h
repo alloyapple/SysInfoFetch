@@ -55,6 +55,7 @@ private:
     QLabel* lblGpuInfo;
     QLabel* lblDisplayInfo;
     QLabel* lblMemoryInfo;
+    QLabel* lblMemoryHardware;
     QLabel* lblNetworkInfo;
     QVBoxLayout* hardwareDiskLayout;
     QLabel* lblSoftwareOs;

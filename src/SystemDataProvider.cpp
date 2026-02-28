@@ -49,6 +49,7 @@ void SystemDataProvider::fetchAllData()
     fetchMemoryUsage();
     fetchMemoryInfo();
     fetchDiskHardwareInfo();
+    fetchMemoryHardwareInfo();
     fetchNetworkInfo();
     updateTime();
 
@@ -70,6 +71,7 @@ void SystemDataProvider::updateSystemData()
     fetchMemoryUsage();
     fetchMemoryInfo();
     fetchDiskHardwareInfo();
+    fetchMemoryHardwareInfo();
     fetchNetworkInfo();
     emit dataChanged();
 }
@@ -105,13 +107,43 @@ void SystemDataProvider::fetchGpuInfo()
 
 void SystemDataProvider::fetchDisplayInfo()
 {
-    DEVMODEW dm = {};
-    dm.dmSize = sizeof(dm);
-    if (EnumDisplaySettingsW(nullptr, ENUM_CURRENT_SETTINGS, &dm)) {
-        m_displayInfo = QString("%1x%2 @ %3 Hz").arg(dm.dmPelsWidth).arg(dm.dmPelsHeight).arg(dm.dmDisplayFrequency);
-    } else {
-        m_displayInfo = "Unknown";
-    }
+    // Use EnumDisplayMonitors + GetMonitorInfo to reliably get monitor device name,
+    // then query EnumDisplayDevices and EnumDisplaySettings for brand/string and resolution.
+    QStringList displays;
+
+    struct Ctx { QStringList* out; } ctx{ &displays };
+
+    auto enumProc = [](HMONITOR hMon, HDC, LPRECT, LPARAM lParam) -> BOOL {
+        QStringList* out = reinterpret_cast<Ctx*>(lParam)->out;
+        MONITORINFOEXW mi;
+        ZeroMemory(&mi, sizeof(mi));
+        mi.cbSize = sizeof(mi);
+        if (!GetMonitorInfoW(hMon, &mi)) return TRUE;
+
+        // Try to get a friendly name via EnumDisplayDevices
+        DISPLAY_DEVICEW dev;
+        ZeroMemory(&dev, sizeof(dev));
+        dev.cb = sizeof(dev);
+        QString friendly;
+        if (EnumDisplayDevicesW(mi.szDevice, 0, &dev, 0)) {
+            friendly = QString::fromWCharArray(dev.DeviceString).trimmed();
+        }
+
+        DEVMODEW dm;
+        ZeroMemory(&dm, sizeof(dm));
+        dm.dmSize = sizeof(dm);
+        if (EnumDisplaySettingsW(mi.szDevice, ENUM_CURRENT_SETTINGS, &dm)) {
+            QString name = friendly.isEmpty() ? QString::fromWCharArray(mi.szDevice) : friendly;
+            QString res = QString("%1x%2").arg(dm.dmPelsWidth).arg(dm.dmPelsHeight);
+            out->append(QString("%1 - %2").arg(name).arg(res));
+        }
+        return TRUE;
+    };
+
+    EnumDisplayMonitors(nullptr, nullptr, (MONITORENUMPROC)enumProc, (LPARAM)&ctx);
+
+    if (displays.isEmpty()) m_displayInfo = "Unknown";
+    else m_displayInfo = displays.join('\n');
     emit dataChanged();
 }
 
@@ -378,6 +410,128 @@ void SystemDataProvider::fetchDiskHardwareInfo()
         pLoc->Release();
     }
     
+    CoUninitialize();
+    emit dataChanged();
+}
+
+void SystemDataProvider::fetchMemoryHardwareInfo()
+{
+    m_memoryHardwareInfo.clear();
+
+    HRESULT hres = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(hres) && hres != RPC_E_CHANGED_MODE) {
+        m_memoryHardwareInfo = "WMI init failed";
+        emit dataChanged();
+        return;
+    }
+
+    hres = CoInitializeSecurity(
+        nullptr, -1, nullptr, nullptr,
+        RPC_C_AUTHN_LEVEL_DEFAULT,
+        RPC_C_IMP_LEVEL_IMPERSONATE,
+        nullptr, EOAC_NONE, nullptr
+    );
+
+    IWbemLocator* pLoc = nullptr;
+    hres = CoCreateInstance(CLSID_WbemLocator, nullptr, CLSCTX_INPROC_SERVER,
+                            IID_IWbemLocator, (LPVOID*)&pLoc);
+
+    if (SUCCEEDED(hres)) {
+        IWbemServices* pSvc = nullptr;
+        BSTR wmiNamespace = SysAllocString(L"ROOT\\CIMV2");
+        hres = pLoc->ConnectServer(
+            wmiNamespace,
+            nullptr, nullptr, nullptr, 0, nullptr, nullptr, &pSvc
+        );
+        SysFreeString(wmiNamespace);
+
+        if (SUCCEEDED(hres)) {
+            hres = CoSetProxyBlanket(
+                pSvc,
+                RPC_C_AUTHN_WINNT,
+                RPC_C_AUTHZ_NONE,
+                nullptr,
+                RPC_C_AUTHN_LEVEL_CALL,
+                RPC_C_IMP_LEVEL_IMPERSONATE,
+                nullptr,
+                EOAC_NONE
+            );
+
+            if (SUCCEEDED(hres)) {
+                IEnumWbemClassObject* pEnumerator = nullptr;
+                BSTR query = SysAllocString(L"SELECT Manufacturer, Capacity, Speed, PartNumber FROM Win32_PhysicalMemory");
+                BSTR wql = SysAllocString(L"WQL");
+                hres = pSvc->ExecQuery(
+                    wql,
+                    query,
+                    WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
+                    nullptr,
+                    &pEnumerator
+                );
+                SysFreeString(query);
+                SysFreeString(wql);
+
+                if (SUCCEEDED(hres)) {
+                    IWbemClassObject* pclsObj = nullptr;
+                    ULONG uReturn = 0;
+                    QStringList modules;
+
+                    while (pEnumerator) {
+                        HRESULT hr = pEnumerator->Next(WBEM_INFINITE, 1, &pclsObj, &uReturn);
+                        if (uReturn == 0) break;
+
+                        VARIANT vtProp;
+
+                        // Manufacturer
+                        hr = pclsObj->Get(L"Manufacturer", 0, &vtProp, nullptr, nullptr);
+                        QString manuf = (vtProp.vt == VT_BSTR) ? QString::fromWCharArray(vtProp.bstrVal) : "Unknown";
+                        VariantClear(&vtProp);
+
+                        // Capacity
+                        hr = pclsObj->Get(L"Capacity", 0, &vtProp, nullptr, nullptr);
+                        QString cap = "Unknown";
+                        if (vtProp.vt == VT_BSTR) {
+                            bool ok;
+                            quint64 bytes = QString::fromWCharArray(vtProp.bstrVal).toULongLong(&ok);
+                            if (ok) {
+                                double gb = bytes / (1024.0 * 1024.0 * 1024.0);
+                                cap = QString::number(gb, 'f', 1) + " GB";
+                            }
+                        } else if (vtProp.vt == VT_UI8) {
+                            quint64 bytes = vtProp.ullVal;
+                            double gb = bytes / (1024.0 * 1024.0 * 1024.0);
+                            cap = QString::number(gb, 'f', 1) + " GB";
+                        }
+                        VariantClear(&vtProp);
+
+                        // Speed
+                        hr = pclsObj->Get(L"Speed", 0, &vtProp, nullptr, nullptr);
+                        QString speed = (vtProp.vt == VT_BSTR) ? QString::fromWCharArray(vtProp.bstrVal) : QString::number(vtProp.uintVal);
+                        VariantClear(&vtProp);
+
+                        // PartNumber
+                        hr = pclsObj->Get(L"PartNumber", 0, &vtProp, nullptr, nullptr);
+                        QString part = (vtProp.vt == VT_BSTR) ? QString::fromWCharArray(vtProp.bstrVal) : "";
+                        VariantClear(&vtProp);
+
+                        QString info = QString("%1 - %2%3").arg(manuf).arg(cap).arg(part.isEmpty() ? "" : (", " + part));
+                        if (!speed.isEmpty()) info += QString(", %1 MHz").arg(speed);
+                        modules.append(info);
+
+                        pclsObj->Release();
+                    }
+
+                    if (modules.isEmpty()) m_memoryHardwareInfo = "No memory modules found";
+                    else m_memoryHardwareInfo = modules.join("\n");
+
+                    pEnumerator->Release();
+                }
+                pSvc->Release();
+            }
+        }
+        pLoc->Release();
+    }
+
     CoUninitialize();
     emit dataChanged();
 }
